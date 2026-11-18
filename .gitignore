@@ -1,0 +1,70 @@
+# =====================================================================
+# 1. FILE NHẠY CẢM, BIẾN MÔI TRƯỜNG & BẢO MẬT (KHÔNG BAO GIỜ PUSH)
+# =====================================================================
+.env
+.env.*
+*.env
+!.env.example
+
+# Cookies YouTube / Phiên đăng nhập
+cookies.txt
+*cookies*.txt
+*.cookie
+*.cookies
+
+# Khóa bảo mật, Token rời & Chứng chỉ
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+client_secret*.json
+service_account*.json
+*secret*.json
+*token*.txt
+
+# =====================================================================
+# 2. MÔI TRƯỜNG ẢO PYTHON & CACHE
+# =====================================================================
+.venv/
+venv/
+env/
+ENV/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =====================================================================
+# 3. FILE THỰC THI CỤC BỘ, DỮ LIỆU TẠM & NHẬT KÝ (LOGS)
+# =====================================================================
+ffmpeg
+ffmpeg.exe
+ffplay.exe
+ffprobe.exe
+bin/
+
+*.log
+logs/
+*.part
+*.ytdl
+*.webm
+*.m4a
+*.mp3
+*.opus
+*.db
+*.sqlite
+*.sqlite3
+
+# =====================================================================
+# 4. HỆ ĐIỀU HÀNH & TRÌNH SOẠN THẢO (IDE)
+# =====================================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
