@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -30,6 +32,17 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("music_bot")
+
+# Persist command tracebacks, including transient voice/network failures.
+_log_dir = Path(__file__).resolve().parent / "logs"
+_log_dir.mkdir(exist_ok=True)
+_file_handler = RotatingFileHandler(
+    _log_dir / "bot.log", maxBytes=2_000_000, backupCount=2, encoding="utf-8"
+)
+_file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+))
+logging.getLogger().addHandler(_file_handler)
 
 
 def verify_ffmpeg() -> tuple[bool, str]:

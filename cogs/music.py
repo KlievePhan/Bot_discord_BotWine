@@ -7,6 +7,7 @@ import shlex
 import time
 from collections import deque
 from enum import Enum
+from pathlib import Path
 
 import discord
 from discord import app_commands
@@ -83,6 +84,7 @@ def build_ffmpeg_source(
         raise ValueError("Track chưa có stream_url hợp lệ.")
 
     before_parts: list[str] = [
+        "-hide_banner", "-loglevel", "warning",
         "-reconnect", "1",
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
@@ -104,12 +106,23 @@ def build_ffmpeg_source(
     before_options = " ".join(shlex.quote(part) for part in before_parts)
     options = " ".join(shlex.quote(part) for part in option_parts)
 
-    pcm_audio = discord.FFmpegPCMAudio(
-        track.stream_url,
-        executable=FFMPEG_EXECUTABLE,
-        before_options=before_options,
-        options=options,
-    )
+    # Keep native FFmpeg errors even when the Windows launcher has no stderr.
+    # Popen gives the child its own handle, so the parent can close this file.
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    error_log = log_dir / "ffmpeg.log"
+    with error_log.open("ab", buffering=0) as stderr_file:
+        stderr_file.write(
+            f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} filter={audio_filter_key} ---\n".encode()
+        )
+        pcm_audio = discord.FFmpegPCMAudio(
+            track.stream_url,
+            executable=FFMPEG_EXECUTABLE,
+            before_options=before_options,
+            options=options,
+            stderr=stderr_file,
+        )
+    log.info("FFmpeg diagnostics: %s", error_log)
     return discord.PCMVolumeTransformer(pcm_audio, volume=volume)
 
 
