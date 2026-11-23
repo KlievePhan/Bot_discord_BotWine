@@ -72,13 +72,33 @@ def build_progress_bar(elapsed: float, duration: int | None, is_live: bool, leng
     return f"`{format_duration(clamped)}` {bar} `{format_duration(duration)}`"
 
 
+class CheckedAudioSource(discord.PCMVolumeTransformer):
+    """Validate the first decoded frame without dropping it during playback."""
+
+    def prime(self) -> None:
+        self._first_frame = super().read()
+        if not self._first_frame:
+            self.cleanup()
+            raise RuntimeError(
+                "FFmpeg không đọc được âm thanh từ nguồn. "
+                "Xem logs/ffmpeg.log để biết lỗi HTTP/giải mã cụ thể."
+            )
+
+    def read(self) -> bytes:
+        first = getattr(self, "_first_frame", None)
+        if first is not None:
+            self._first_frame = None
+            return first
+        return super().read()
+
+
 def build_ffmpeg_source(
     track: Track,
     *,
     volume: float,
     audio_filter_key: str,
     seek_seconds: float = 0.0,
-) -> discord.PCMVolumeTransformer:
+) -> CheckedAudioSource:
     """Tạo luồng âm thanh FFmpeg kèm tự động kết nối lại, seek thời gian và bộ lọc âm thanh."""
     if not track.stream_url:
         raise ValueError("Track chưa có stream_url hợp lệ.")
@@ -89,11 +109,21 @@ def build_ffmpeg_source(
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
         "-nostdin",
+        "-rw_timeout", "15000000",
     ]
 
     user_agent = track.http_headers.get("User-Agent")
     if user_agent:
         before_parts.extend(["-user_agent", user_agent])
+
+    headers = "".join(
+        f"{key}: {value}\r\n"
+        for key, value in track.http_headers.items()
+        if key.lower() != "user-agent"
+        and not any(c in str(key) + str(value) for c in "\r\n")
+    )
+    if headers:
+        before_parts.extend(["-headers", headers])
 
     if seek_seconds > 1.0 and not track.is_live:
         before_parts.extend(["-ss", f"{seek_seconds:.2f}"])
@@ -123,7 +153,7 @@ def build_ffmpeg_source(
             stderr=stderr_file,
         )
     log.info("FFmpeg diagnostics: %s", error_log)
-    return discord.PCMVolumeTransformer(pcm_audio, volume=volume)
+    return CheckedAudioSource(pcm_audio, volume=volume)
 
 
 class GuildMusicState:
@@ -620,6 +650,7 @@ class MusicCog(commands.Cog, name="Music"):
                     audio_filter_key=state.audio_filter,
                     seek_seconds=0.0,
                 )
+                await asyncio.to_thread(source.prime)
             except Exception as exc:
                 friendly_err = translate_ytdlp_error(exc)
                 log.warning("Bỏ qua bài lỗi '%s' ở guild %s: %s", next_track.title, guild.id, exc)
@@ -677,6 +708,7 @@ class MusicCog(commands.Cog, name="Music"):
                 audio_filter_key=new_filter_key,
                 seek_seconds=elapsed,
             )
+            await asyncio.to_thread(new_source.prime)
 
             state.suppress_after_callback = True
             vc.stop()
@@ -840,11 +872,17 @@ class MusicCog(commands.Cog, name="Music"):
     )
     @app_commands.describe(query="Nhập tên bài hát, ca sĩ hoặc dán link YouTube / Playlist")
     async def play(self, ctx: commands.Context[commands.Bot], *, query: str) -> None:
+        started_at = time.perf_counter()
+        # Acknowledge before voice handshake and YouTube/token network calls.
+        if ctx.interaction:
+            await ctx.defer()
+        else:
+            await ctx.send("⏳ Đã nhận yêu cầu, đang chuẩn bị nhạc…")
         vc = await self._ensure_user_and_bot_voice(ctx, connect_if_needed=True)
         if vc is None or ctx.guild is None:
             return
 
-        await ctx.defer()
+        voice_ready_at = time.perf_counter()
         state = self.get_state(ctx.guild.id)
         state.text_channel = ctx.channel
         state.cancel_idle_timer()
@@ -852,6 +890,11 @@ class MusicCog(commands.Cog, name="Music"):
 
         try:
             tracks = await extract_tracks(query, requester=ctx.author)
+            log.info(
+                "Play timing guild=%s: voice=%.2fs extract=%.2fs",
+                ctx.guild.id, voice_ready_at - started_at,
+                time.perf_counter() - voice_ready_at,
+            )
         except Exception as exc:
             await ctx.send(f"❌ {translate_ytdlp_error(exc)}")
             if not vc.is_playing() and not vc.is_paused() and not state.queue:

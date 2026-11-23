@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import shutil
 import time
@@ -12,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 import discord
 import yt_dlp
 
-from config import get_cookies_path
+from config import BASE_DIR, get_cookies_path
 
 # ThreadPool riêng để tác vụ mạng của yt-dlp không làm nghẽn vòng lặp sự kiện Discord
 _YTDLP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ytdlp_worker")
@@ -105,12 +106,39 @@ def _build_ydl_options(
     if _HAS_NODE_RUNTIME:
         opts["js_runtimes"] = {"node": {}}
 
+    provider_home = BASE_DIR / ".local" / "bgutil-ytdlp-pot-provider" / "server"
+    if _HAS_NODE_RUNTIME and (provider_home / "build" / "generate_once.js").is_file():
+        os.environ.setdefault("XDG_CACHE_HOME", str(BASE_DIR / ".local" / "cache"))
+        opts["extractor_args"] = {
+            "youtube": {"player_client": ["mweb"]},
+            "youtubepot-bgutilscript": {"server_home": [str(provider_home)]},
+        }
+
     # Tự động nạp cookies.txt nếu người dùng có đặt file trong thư mục dự án
     cookies_path = get_cookies_path()
     if cookies_path:
         opts["cookiefile"] = cookies_path
 
     return opts
+
+
+def _extract_info(ydl: yt_dlp.YoutubeDL, query: str) -> dict[str, Any] | None:
+    """Try the faster token-enabled client before broader compatibility clients."""
+    try:
+        return ydl.extract_info(query, download=False)
+    except yt_dlp.utils.DownloadError as exc:
+        args = ydl.params.get("extractor_args", {})
+        if args.get("youtube", {}).get("player_client") != ["mweb"]:
+            raise
+        # Do not repeat unrelated login, unavailable-video, or network errors.
+        if "requested format" not in str(exc).lower():
+            raise
+        fallback = dict(ydl.params)
+        fallback["extractor_args"] = {
+            **args, "youtube": {"player_client": ["tv", "web_safari"]}
+        }
+        with yt_dlp.YoutubeDL(fallback) as alternate:
+            return alternate.extract_info(query, download=False)
 
 
 def _pick_thumbnail(entry: dict[str, Any]) -> str | None:
@@ -192,7 +220,7 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
         # Tìm kiếm theo từ khóa: lấy ngay kết quả phù hợp nhất kèm stream URL
         opts = _build_ydl_options(noplaylist=True, extract_flat=False)
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f"ytsearch1:{cleaned}", download=False)
+            info = _extract_info(ydl, f"ytsearch1:{cleaned}")
         entries = (info or {}).get("entries") or []
         for entry in entries:
             if entry:
@@ -209,7 +237,7 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
         playlistend=max_playlist_items if allow_playlist else None,
     )
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(cleaned, download=False)
+        info = _extract_info(ydl, cleaned)
 
     if not info:
         return []
@@ -233,7 +261,7 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
 def _sync_populate_stream(track: Track) -> Track:
     opts = _build_ydl_options(noplaylist=True, extract_flat=False)
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(track.webpage_url, download=False)
+        info = _extract_info(ydl, track.webpage_url)
 
     if info and "entries" in info:
         entries = [e for e in (info.get("entries") or []) if e]
@@ -264,7 +292,7 @@ def _sync_populate_stream(track: Track) -> Track:
 def _sync_autocomplete_search(query: str, limit: int) -> list[dict[str, Any]]:
     opts = _build_ydl_options(noplaylist=True, extract_flat=True)
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+        info = _extract_info(ydl, f"ytsearch{limit}:{query}")
 
     results: list[dict[str, Any]] = []
     for entry in (info or {}).get("entries") or []:

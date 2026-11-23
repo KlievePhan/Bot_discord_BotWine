@@ -27,6 +27,7 @@ service_account*.json
 # 2. MÔI TRƯỜNG ẢO PYTHON & CACHE
 # =====================================================================
 .venv/
+.local/
 venv/
 env/
 ENV/

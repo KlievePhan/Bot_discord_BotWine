@@ -42,6 +42,20 @@ Nếu đưa bot lên VPS hoặc cần mở các bài nhạc giới hạn độ t
 
 ## 📋 Danh sách lệnh chính
 
+### Tự lấy GVS PO Token khi YouTube trả 403
+
+Cần Node.js >= 22 và Git. Chạy một lần trong PowerShell tại thư mục dự án:
+
+```powershell
+.\setup_po_token.ps1
+```
+
+Khởi động lại bot. Bot tự dùng provider dạng script trong `.local/` và các client
+`mweb` trước; dự phòng `tv`, `web_safari` khi không có định dạng phù hợp.
+Không cần mở thêm server hoặc chép token thủ công.
+Token/cache nằm trong `.local/cache/`, được bỏ qua bởi Git. PO Token không bảo đảm
+khắc phục mọi lỗi chặn IP hoặc yêu cầu đăng nhập của YouTube.
+
 | Lệnh Slash | Lệnh nhanh (Prefix) | Chức năng |
 | :--- | :--- | :--- |
 | `/play <từ khóa / URL>` | `!play`, `!p` | Phát nhạc hoặc thêm bài / Playlist vào hàng đợi |
