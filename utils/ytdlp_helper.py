@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import shutil
@@ -14,6 +15,8 @@ import discord
 import yt_dlp
 
 from config import BASE_DIR, get_cookies_path
+
+log = logging.getLogger("music_bot.extractor")
 
 # ThreadPool riêng để tác vụ mạng của yt-dlp không làm nghẽn vòng lặp sự kiện Discord
 _YTDLP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ytdlp_worker")
@@ -97,6 +100,7 @@ def _build_ydl_options(
         "geo_bypass": True,
         "nocheckcertificate": True,
         "socket_timeout": 15,
+        "extractor_args": {"youtube": {"player_client": ["visionos"]}},
     }
 
     if playlistend is not None:
@@ -110,33 +114,40 @@ def _build_ydl_options(
     if _HAS_NODE_RUNTIME and (provider_home / "build" / "generate_once.js").is_file():
         os.environ.setdefault("XDG_CACHE_HOME", str(BASE_DIR / ".local" / "cache"))
         opts["extractor_args"] = {
-            "youtube": {"player_client": ["mweb"]},
+            "youtube": {"player_client": ["visionos"]},
+            "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
             "youtubepot-bgutilscript": {"server_home": [str(provider_home)]},
         }
-
-    # Tự động nạp cookies.txt nếu người dùng có đặt file trong thư mục dự án
-    cookies_path = get_cookies_path()
-    if cookies_path:
-        opts["cookiefile"] = cookies_path
 
     return opts
 
 
 def _extract_info(ydl: yt_dlp.YoutubeDL, query: str) -> dict[str, Any] | None:
-    """Try the faster token-enabled client before broader compatibility clients."""
+    """Keep public playback anonymous; authenticate only for age checks."""
     try:
         return ydl.extract_info(query, download=False)
     except yt_dlp.utils.DownloadError as exc:
         args = ydl.params.get("extractor_args", {})
-        if args.get("youtube", {}).get("player_client") != ["mweb"]:
+        clients = args.get("youtube", {}).get("player_client")
+        if clients not in (["visionos"], ["mweb"]):
             raise
-        # Do not repeat unrelated login, unavailable-video, or network errors.
-        if "requested format" not in str(exc).lower():
+        message = str(exc).lower()
+        age_required = any(text in message for text in (
+            "sign in to confirm your age", "age-restricted", "inappropriate for some users"
+        ))
+        if not age_required and "requested format" not in message:
+            raise
+        cookies_path = get_cookies_path() if age_required else None
+        if age_required and not cookies_path:
             raise
         fallback = dict(ydl.params)
+        fallback.pop("cookiefile", None)
+        if cookies_path:
+            fallback["cookiefile"] = cookies_path
         fallback["extractor_args"] = {
-            **args, "youtube": {"player_client": ["tv", "web_safari"]}
+            **args, "youtube": {"player_client": ["mweb"]}
         }
+        log.info("YouTube fallback: client=mweb authenticated=%s", bool(cookies_path))
         with yt_dlp.YoutubeDL(fallback) as alternate:
             return alternate.extract_info(query, download=False)
 

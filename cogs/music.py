@@ -442,11 +442,17 @@ class QueuePaginationView(discord.ui.View):
         )
 
         if state.current:
+            current = state.current
+            current_title = discord.utils.escape_markdown(current.title[:120])
+            current_link = (
+                f"[{current_title}]({current.webpage_url})"
+                if len(current.webpage_url) <= 200 else current_title
+            )
             embed.add_field(
                 name="🎶 Đang phát hiện tại",
                 value=(
-                    f"[{state.current.title}]({state.current.webpage_url}) "
-                    f"(`{state.current.duration_str}`) — yêu cầu bởi **{state.current.requester_name}**"
+                    f"{current_link} "
+                    f"(`{current.duration_str}`) — yêu cầu bởi **{discord.utils.escape_markdown(current.requester_name[:32])}**"
                 ),
                 inline=False,
             )
@@ -460,15 +466,34 @@ class QueuePaginationView(discord.ui.View):
             lines: list[str] = []
             for idx, track in enumerate(queue_list[start:end], start=start + 1):
                 title_short = track.title if len(track.title) <= 58 else track.title[:55] + "..."
-                lines.append(
-                    f"`{idx:02d}.` [{title_short}]({track.webpage_url}) "
-                    f"(`{track.duration_str}`) • *{track.requester_name}*"
+                title_short = discord.utils.escape_markdown(title_short)
+                track_link = (
+                    f"[{title_short}]({track.webpage_url})"
+                    if len(track.webpage_url) <= 200 else title_short
                 )
-            embed.add_field(
-                name=f"⏳ Danh sách chờ ({len(queue_list)} bài)",
-                value="\n".join(lines),
-                inline=False,
-            )
+                lines.append(
+                    f"`{idx:02d}.` {track_link} "
+                    f"(`{track.duration_str}`) • *{discord.utils.escape_markdown(track.requester_name[:32])}*"
+                )
+            # Ten linked rows can exceed Discord's 1024-character field limit.
+            # Split on row boundaries so every song and link stays intact.
+            chunks: list[str] = []
+            chunk = ""
+            for line in lines:
+                candidate = f"{chunk}\n{line}" if chunk else line
+                if len(candidate.encode("utf-16-le")) // 2 > 1024:
+                    chunks.append(chunk)
+                    chunk = line
+                else:
+                    chunk = candidate
+            if chunk:
+                chunks.append(chunk)
+            for part, value in enumerate(chunks):
+                embed.add_field(
+                    name=f"⏳ Danh sách chờ ({len(queue_list)} bài)" if part == 0 else "Danh sách chờ (tiếp)",
+                    value=value,
+                    inline=False,
+                )
 
             known_durations = [t.duration for t in queue_list if t.duration]
             total_dur = format_duration(sum(known_durations)) if known_durations else "??:??"

@@ -50,8 +50,11 @@ Cần Node.js >= 22 và Git. Chạy một lần trong PowerShell tại thư mụ
 .\setup_po_token.ps1
 ```
 
-Khởi động lại bot. Bot tự dùng provider dạng script trong `.local/` và các client
-`mweb` trước; dự phòng `tv`, `web_safari` khi không có định dạng phù hợp.
+Khởi động lại bot. Bot tự khởi động PO Token HTTP provider trên `127.0.0.1:4416`
+để giữ cache trong RAM; tự tắt provider do bot tạo khi đóng bot. Nếu không khởi
+động được server, bot dùng script dự phòng trong `.local/`. Bot dùng client
+`visionos` không đăng nhập cho video công khai; dự phòng `mweb` khi thiếu định dạng.
+Chỉ nạp cookies và dùng `mweb` có đăng nhập khi YouTube yêu cầu xác nhận tuổi.
 Không cần mở thêm server hoặc chép token thủ công.
 Token/cache nằm trong `.local/cache/`, được bỏ qua bởi Git. PO Token không bảo đảm
 khắc phục mọi lỗi chặn IP hoặc yêu cầu đăng nhập của YouTube.

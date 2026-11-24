@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -9,6 +10,7 @@ import sys
 
 import discord
 from discord.ext import commands
+from utils.po_provider import POTokenServer
 
 from config import (
     AUDIO_FILTERS,
@@ -62,6 +64,7 @@ def verify_ffmpeg() -> tuple[bool, str]:
 
 class WineMusicBot(commands.Bot):
     def __init__(self) -> None:
+        self.po_provider = POTokenServer()
         intents = discord.Intents.default()
         intents.guilds = True
         intents.voice_states = True      # Bắt buộc để nhận diện kênh thoại
@@ -74,6 +77,7 @@ class WineMusicBot(commands.Bot):
         )
 
     async def setup_hook(self) -> None:
+        await asyncio.to_thread(self.po_provider.start)
         await self.load_extension("cogs.music")
         log.info("Đã nạp module âm nhạc (cogs.music).")
 
@@ -82,6 +86,12 @@ class WineMusicBot(commands.Bot):
             log.info("Đã đồng bộ %d Slash Commands lên toàn bộ Server.", len(synced))
         except Exception as exc:
             log.warning("Không thể đồng bộ Slash Commands tự động: %s", exc)
+
+    async def close(self) -> None:
+        try:
+            await super().close()
+        finally:
+            await asyncio.to_thread(self.po_provider.stop)
 
     async def on_ready(self) -> None:
         assert self.user is not None
