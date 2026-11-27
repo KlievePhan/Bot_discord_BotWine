@@ -71,7 +71,7 @@ class Track:
 def _is_youtube_mix_url(url: str) -> bool:
     """
     Kiểm tra link YouTube Radio/Mix tự động (list=RD...).
-    Với link Mix đính kèm video đang xem, chỉ nên phát video đó thay vì tải 50 bài ngẫu nhiên.
+    Nhận diện Mix để áp dụng giới hạn riêng cho danh sách Radio động.
     """
     try:
         parsed = urlparse(url)
@@ -240,12 +240,13 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
                     return [track]
         return []
 
-    # Nếu là URL: hỗ trợ cả Video lẻ lẫn Playlist (trừ YouTube Radio Mix tự động)
-    allow_playlist = not _is_youtube_mix_url(cleaned)
+    # Mix is dynamic and potentially unbounded: load a finite snapshot.
+    is_mix = _is_youtube_mix_url(cleaned)
+    playlist_limit = min(max_playlist_items, 50) if is_mix else max_playlist_items
     opts = _build_ydl_options(
-        noplaylist=not allow_playlist,
-        extract_flat="in_playlist" if allow_playlist else False,
-        playlistend=max_playlist_items if allow_playlist else None,
+        noplaylist=False,
+        extract_flat="in_playlist",
+        playlistend=playlist_limit,
     )
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = _extract_info(ydl, cleaned)
@@ -255,6 +256,7 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
 
     if "entries" in info:
         tracks: list[Track] = []
+        seen: set[str] = set()
         for entry in info.get("entries") or []:
             if not entry:
                 continue
@@ -262,7 +264,12 @@ def _sync_extract_tracks(query: str, requester: discord.abc.User, max_playlist_i
             is_flat_entry = entry.get("_type") in ("url", "url_transparent") or "formats" not in entry
             track = _entry_to_track(entry, requester, is_flat=is_flat_entry)
             if track:
+                if is_mix and track.webpage_url in seen:
+                    continue
+                seen.add(track.webpage_url)
                 tracks.append(track)
+                if len(tracks) >= playlist_limit:
+                    break
         return tracks
 
     single = _entry_to_track(info, requester, is_flat=False)

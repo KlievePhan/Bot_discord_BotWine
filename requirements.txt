@@ -1,7 +1,7 @@
 discord.py[voice]==2.7.1
 # davey 0.2 requires transition handling not present in discord.py 2.7.1.
 davey==0.1.6
-yt-dlp[default]==2026.11.22.232654.dev0
+yt-dlp[default]==2026.11.24.232653.dev0
 bgutil-ytdlp-pot-provider==2.0.2
 python-dotenv>=1.0.1
 audioop-lts>=0.2.1; python_version >= "3.13"

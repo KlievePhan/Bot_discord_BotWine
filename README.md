@@ -42,6 +42,10 @@ Nếu đưa bot lên VPS hoặc cần mở các bài nhạc giới hạn độ t
 
 ## 📋 Danh sách lệnh chính
 
+Link YouTube Mix/Radio (`list=RD...`, kể cả `start_radio=1`) được nạp tối đa
+50 bài không trùng trong một lần gọi `/play` hoặc `!p`. Đây là danh sách tại
+thời điểm thêm, không tự bổ sung vô hạn. Playlist thông thường giới hạn 100 bài.
+
 ### Tự lấy GVS PO Token khi YouTube trả 403
 
 Cần Node.js >= 22 và Git. Chạy một lần trong PowerShell tại thư mục dự án:
